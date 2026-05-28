@@ -1,0 +1,6 @@
+{
+  "name": "Geomática Vision AI - Dataset Generator",
+  "description": "Generador avanzado (V.02) de datasets sintéticos de micro-fisionomía urbana para entrenamiento de modelos de Reverse-Geocoding.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
