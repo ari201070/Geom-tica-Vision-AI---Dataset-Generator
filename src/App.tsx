@@ -36,6 +36,7 @@ import {
   AlertTriangle,
   Info,
   BarChart3 as ChartIcon
+, Folder, Save, HardDrive
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { generateDatasetBatch, geocodeLocation, parseLocations, validateGeocoordinatesBatch, DatasetEntry, getGeographySuggestions, isSpendingCapExceeded, researchLocationAnchors, LocationAnchor } from './services/geminiService';
@@ -85,6 +86,8 @@ export default function App() {
   const [anchors, setAnchors] = useState<LocationAnchor[]>([]);
   
   const [savedDatasets, setSavedDatasets] = useState<SavedDataset[]>([]);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveName, setSaveName] = useState("");
 
   useEffect(() => {
     try {
@@ -114,12 +117,13 @@ export default function App() {
     localStorage.setItem('saved_datasets', JSON.stringify(updated));
   };
 
-  const handleSaveCurrentDataset = () => {
+  const handleSaveCurrentDataset = (customName?: string) => {
     if (entries.length === 0) return;
     
+    const finalName = customName || location || 'Colección Manual';
     const newSaved: SavedDataset = {
       id: `ds_${Date.now()}`,
-      location: location || 'Colección Manual',
+      location: finalName,
       sampleCount: entries.length,
       timestamp: new Date().toLocaleString('es-ES', { 
         day: '2-digit', 
@@ -133,7 +137,7 @@ export default function App() {
     };
     
     setSavedDatasets(prev => {
-      const updated = [newSaved, ...prev.filter(d => d.location.toLowerCase().trim() !== newSaved.location.toLowerCase().trim())].slice(0, 15);
+      const updated = [newSaved, ...prev.filter(d => d.location.toLowerCase().trim() !== newSaved.location.toLowerCase().trim())].slice(0, 50);
       try {
         localStorage.setItem('saved_datasets', JSON.stringify(updated));
         setErrorNotification(`Éxito: Colección para "${newSaved.location}" archivada con éxito en historia local.`);
@@ -312,7 +316,7 @@ export default function App() {
       } else {
         setSuggestions([]);
       }
-    }, 600);
+    }, 1500);
 
     return () => clearTimeout(timer);
   }, [location]);
@@ -550,7 +554,7 @@ export default function App() {
           anchors: anchors
         };
         setSavedDatasets(prev => {
-          const updated = [newSaved, ...prev.filter(d => d.location.toLowerCase().trim() !== location.toLowerCase().trim())].slice(0, 15);
+          const updated = [newSaved, ...prev.filter(d => d.location.toLowerCase().trim() !== location.toLowerCase().trim())].slice(0, 50);
           try {
             localStorage.setItem('saved_datasets', JSON.stringify(updated));
           } catch (e) {
@@ -833,16 +837,20 @@ export default function App() {
   return (
     <div className="h-screen max-h-screen overflow-hidden flex flex-col font-mono text-brand-ink selection:bg-brand-ink selection:text-brand-bg min-h-screen lg:h-screen lg:max-h-screen lg:overflow-hidden">
       {/* Header */}
-      <header className="border-b border-brand-line p-6 flex flex-col md:flex-row justify-between items-start md:items-end bg-brand-bg sticky top-0 z-40 gap-4">
-        <div>
-          <h1 className="text-3xl font-serif italic font-bold tracking-tight mb-2">
-            REVERSE-GEOCODING <span className="not-italic font-sans text-xl opacity-50 ml-2">CORE ENGINE / V.02</span>
+      <header className="border-b border-brand-line p-6 flex flex-col 2xl:flex-row justify-between items-start 2xl:items-end bg-brand-bg sticky top-0 z-40 gap-4 flex-wrap">
+        <div className="w-full 2xl:w-auto">
+          <h1 
+            onClick={() => window.location.reload()}
+            className="text-3xl font-serif italic font-bold tracking-tight mb-2 cursor-pointer hover:opacity-80 transition-opacity inline-block"
+            title="Volver al inicio"
+          >
+            REVERSE-GEOCODING <span className="not-italic font-sans text-xl opacity-50 ml-2 pointer-events-none">CORE ENGINE / V.02</span>
           </h1>
           <div className="flex flex-col gap-1">
             <p className="text-[10px] uppercase tracking-[0.2em] opacity-60 max-w-md leading-relaxed">
               Analizador de Micro-fisionomía Urbana y Consenso de Atributos.
             </p>
-            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 mt-2 mb-2 relative">
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 mt-2 mb-2 relative flex-wrap">
               <div className="flex items-center gap-2 border-l-2 border-brand-line pl-3">
                 <span className="text-[10px] uppercase tracking-widest opacity-60 whitespace-nowrap">
                   Describe zona o ubicaciones múltiples:
@@ -957,7 +965,7 @@ export default function App() {
           </div>
         </div>
         
-        <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto items-stretch md:items-end">
+        <div className="flex flex-row flex-wrap gap-4 w-full 2xl:w-auto items-stretch 2xl:items-end justify-start 2xl:justify-end">
           <button 
             onClick={handleSelectApiKey}
             className={`flex items-center justify-center gap-2 border px-4 py-2 transition-colors text-[10px] uppercase rounded-sm ${
@@ -1002,32 +1010,13 @@ export default function App() {
           
           <div className="flex gap-2">
             {entries.length > 0 && !isGenerating && (
-              <div className="flex border border-brand-line overflow-hidden rounded-sm">
-                <button 
-                  id="export-json-btn"
-                  onClick={exportToJson}
-                  className="flex items-center justify-center gap-2 px-4 py-2 hover:bg-brand-ink hover:text-brand-bg transition-colors text-xs uppercase border-r border-brand-line"
-                >
-                  <Download size={14} />
-                  JSON
-                </button>
-                <button 
-                  id="export-csv-btn"
-                  onClick={exportToCsv}
-                  className="flex items-center justify-center gap-2 px-4 py-2 hover:bg-brand-ink hover:text-brand-bg transition-colors text-xs uppercase border-r border-brand-line"
-                >
-                  <Download size={14} />
-                  CSV
-                </button>
-                <button 
-                  id="export-geojson-btn"
-                  onClick={exportToGeoJson}
-                  className="flex items-center justify-center gap-2 px-4 py-2 hover:bg-brand-ink hover:text-brand-bg transition-colors text-xs uppercase"
-                >
-                  <Download size={14} />
-                  GeoJSON
-                </button>
-              </div>
+              <button 
+                onClick={() => { setSaveName(location || 'Colección Manual'); setShowSaveModal(true); }}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-brand-ink text-brand-bg hover:bg-brand-ink/90 transition-colors text-xs uppercase font-bold shadow-sm rounded-sm"
+              >
+                <Save size={14} />
+                Guardar / Exportar
+              </button>
             )}
             <button 
               id="generate-btn"
@@ -1052,25 +1041,124 @@ export default function App() {
             {entries.length > 0 && !isGenerating && (
               <div className="flex gap-2 shrink-0">
                 <button 
-                  onClick={handleSaveCurrentDataset}
-                  title="Archivar Colección en Historia Local"
-                  className="flex items-center justify-center gap-1.5 border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 hover:bg-emerald-600 hover:text-white transition-colors text-xs text-emerald-600"
-                >
-                  <Database size={14} />
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Archivar</span>
-                </button>
-                <button 
                   onClick={clearDataset}
                   title="Limpiar dataset"
-                  className="flex items-center justify-center border border-brand-line px-3 py-2 hover:bg-red-900/20 transition-colors text-xs text-red-550"
+                  className="flex items-center justify-center border border-brand-line px-3 py-2 hover:bg-red-900/20 transition-colors text-xs text-red-550 rounded-sm"
                 >
-                  <Database size={14} />
+                  <X size={14} />
                 </button>
               </div>
             )}
           </div>
         </div>
       </header>
+
+      {/* Save / Export Modal */}
+      <AnimatePresence>
+        {showSaveModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-brand-ink/90 z-50 flex items-center justify-center p-4 md:p-6 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-brand-bg w-full max-w-lg p-6 border-l-[6px] border-emerald-600 shadow-2xl relative"
+            >
+              <button 
+                onClick={() => setShowSaveModal(false)}
+                className="absolute top-4 right-4 p-2 hover:bg-brand-ink/10 rounded-full transition-colors"
+              >
+                <X size={20} />
+              </button>
+              
+              <div className="flex items-center gap-4 mb-6">
+                <div className="p-3 bg-emerald-500/10 rounded-full">
+                  <Save className="text-emerald-600" size={28} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold uppercase tracking-tight">Guardar Colección</h3>
+                  <p className="text-[10px] opacity-60 uppercase tracking-widest">¿Dónde deseas guardar estos {entries.length} puntos?</p>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider mb-2 opacity-70">
+                    Nombre del Dataset
+                  </label>
+                  <input 
+                    type="text" 
+                    value={saveName}
+                    onChange={(e) => setSaveName(e.target.value)}
+                    className="w-full bg-brand-ink/5 border border-brand-line px-4 py-3 rounded-sm text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                    placeholder="Ej. Mi Colección..."
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="border border-brand-line p-4 rounded-sm flex flex-col justify-between hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-colors group cursor-pointer"
+                       onClick={() => {
+                         handleSaveCurrentDataset(saveName);
+                         setShowSaveModal(false);
+                         setErrorNotification(`Dataset guardado en la carpeta local de la app como "${saveName}"`);
+                       }}
+                  >
+                    <div>
+                      <h4 className="font-bold flex items-center gap-2 mb-1">
+                        <Folder size={16} className="text-emerald-600" />
+                        Carpeta de la App
+                      </h4>
+                      <p className="text-[10px] opacity-70 leading-relaxed">
+                        Se guarda en el almacenamiento de tu navegador. Ideal para organizar colecciones sin descargar archivos.
+                      </p>
+                    </div>
+                    <div className="mt-4 text-[10px] uppercase font-bold text-emerald-600 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                      Guardar Aquí <ChevronRight size={12}/>
+                    </div>
+                  </div>
+
+                  <div className="border border-brand-line p-4 rounded-sm flex flex-col justify-between">
+                    <div>
+                      <h4 className="font-bold flex items-center gap-2 mb-1">
+                        <HardDrive size={16} className="text-blue-600" />
+                        Descargar a tu PC
+                      </h4>
+                      <p className="text-[10px] opacity-70 leading-relaxed mb-3">
+                        Exporta un archivo físico a tu computadora.
+                      </p>
+                    </div>
+                    
+                    <div className="flex gap-2 w-full mt-auto">
+                      <button 
+                        onClick={() => { exportToJson(); setShowSaveModal(false); }}
+                        className="flex-1 bg-brand-ink/5 hover:bg-brand-ink hover:text-brand-bg transition-colors py-2 text-[10px] font-bold uppercase tracking-wider rounded-sm border border-brand-line/50"
+                      >
+                        JSON
+                      </button>
+                      <button 
+                        onClick={() => { exportToGeoJson(); setShowSaveModal(false); }}
+                        className="flex-1 bg-brand-ink/5 hover:bg-brand-ink hover:text-brand-bg transition-colors py-2 text-[10px] font-bold uppercase tracking-wider rounded-sm border border-brand-line/50"
+                      >
+                        GeoJSON
+                      </button>
+                      <button 
+                        onClick={() => { exportToCsv(); setShowSaveModal(false); }}
+                        className="flex-1 bg-brand-ink/5 hover:bg-brand-ink hover:text-brand-bg transition-colors py-2 text-[10px] font-bold uppercase tracking-wider rounded-sm border border-brand-line/50"
+                      >
+                        CSV
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Cost Warning Modal */}
       <AnimatePresence>
@@ -1306,9 +1394,9 @@ export default function App() {
             {savedDatasets.length > 0 && (
               <div className="w-full text-left bg-white border border-brand-line/30 p-6 rounded-sm shadow-sm md:mt-4">
                 <h3 className="text-xs uppercase font-bold tracking-widest text-brand-ink/50 border-b border-brand-line/20 pb-3 mb-4 flex items-center gap-2">
-                  <Database size={14} className="text-emerald-600" />
-                  <span>Historial de Colecciones Autoguardadas / Locales</span>
-                  <span className="font-mono text-[9px] font-normal lowercase tracking-normal pl-2 border-l ml-auto opacity-70">(evita consumo de APIs - costo $0)</span>
+                  <Folder size={14} className="text-emerald-600" />
+                  <span>Carpeta de la App (Colecciones Guardadas)</span>
+                  <span className="font-mono text-[9px] font-normal lowercase tracking-normal pl-2 border-l ml-auto opacity-70">(almacenamiento local del navegador)</span>
                 </h3>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
