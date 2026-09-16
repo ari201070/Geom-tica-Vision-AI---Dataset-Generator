@@ -606,7 +606,41 @@ export default function App() {
     return Math.round(score);
   }, []);
 
-  const exportToJson = () => {
+  const downloadFileWithPicker = async (contentStr: string, defaultFileName: string, mimeType: string, extension: string) => {
+    try {
+      if ('showSaveFilePicker' in window) {
+        const opts = {
+          suggestedName: defaultFileName,
+          types: [{
+            description: 'Archivo de Datos',
+            accept: { [mimeType]: [extension] },
+          }],
+        };
+        // @ts-ignore
+        const handle = await window.showSaveFilePicker(opts);
+        const writable = await handle.createWritable();
+        await writable.write(contentStr);
+        await writable.close();
+        return;
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      console.warn('showSaveFilePicker falló, usando método alternativo', err);
+    }
+    
+    // Fallback if API not available or failed
+    const blob = new Blob([contentStr], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', url);
+    linkElement.setAttribute('download', defaultFileName);
+    document.body.appendChild(linkElement);
+    linkElement.click();
+    document.body.removeChild(linkElement);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportToJson = async () => {
     const dataWithAnalysis = entries.map(e => ({
       ...e,
       h3Index: h3.latLngToCell(e.coordinates.lat, e.coordinates.lng, 9),
@@ -615,22 +649,17 @@ export default function App() {
     }));
 
     const dataStr = JSON.stringify(dataWithAnalysis, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
     
-    // Create slug from location
     const slug = location.toLowerCase()
       .replace(/[^a-z0-9]/g, '_')
       .replace(/_{2,}/g, '_')
       .slice(0, 30);
     const exportFileDefaultName = `dataset_${slug || 'reverse_geocoding'}.json`;
 
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
+    await downloadFileWithPicker(dataStr, exportFileDefaultName, 'application/json', '.json');
   };
 
-  const exportToCsv = () => {
+  const exportToCsv = async () => {
     if (entries.length === 0) return;
 
     // Helper to flatten nested object
@@ -671,20 +700,16 @@ export default function App() {
       }).join(','))
     ].join('\n');
 
-    const dataUri = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvContent);
     const slug = location.toLowerCase()
       .replace(/[^a-z0-9]/g, '_')
       .replace(/_{2,}/g, '_')
       .slice(0, 30);
     const exportFileDefaultName = `dataset_${slug || 'reverse_geocoding'}.csv`;
 
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
+    await downloadFileWithPicker(csvContent, exportFileDefaultName, 'text/csv', '.csv');
   };
 
-  const exportToGeoJson = () => {
+  const exportToGeoJson = async () => {
     if (entries.length === 0) return;
 
     const geoJson = {
@@ -705,7 +730,6 @@ export default function App() {
     };
 
     const dataStr = JSON.stringify(geoJson, null, 2);
-    const dataUri = 'data:application/geo+json;charset=utf-8,' + encodeURIComponent(dataStr);
     
     const slug = location.toLowerCase()
       .replace(/[^a-z0-9]/g, '_')
@@ -713,10 +737,7 @@ export default function App() {
       .slice(0, 30);
     const exportFileDefaultName = `dataset_${slug || 'reverse_geocoding'}.geojson`;
 
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
+    await downloadFileWithPicker(dataStr, exportFileDefaultName, 'application/geo+json', '.geojson');
   };
 
   const checkCostAndGenerate = async () => {
