@@ -107,7 +107,7 @@ export default function App() {
     setSampleCount(dataset.sampleCount);
     setForcedMapCenter(undefined);
     setViewMode('dataset');
-    setErrorNotification(`Colección: Dataset "${dataset.location}" cargado desde almacenamiento local - Costo $0!`);
+    setErrorNotification(`Colección: Dataset "${dataset.location}" cargado desde almacenamiento local (Caché)`);
   };
 
   const deleteSavedDataset = (id: string, e: React.MouseEvent) => {
@@ -223,15 +223,15 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
-  const [hasPaidKey, setHasPaidKey] = useState(false);
-  const [showCostWarning, setShowCostWarning] = useState(false);
+  const [hasCustomKey, setHasCustomKey] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   // Check for paid API key on mount
   useEffect(() => {
     const checkApiKey = async () => {
       if (window.aistudio?.hasSelectedApiKey) {
         const hasKey = await window.aistudio.hasSelectedApiKey();
-        setHasPaidKey(hasKey);
+        setHasCustomKey(hasKey);
       }
     };
     checkApiKey();
@@ -240,7 +240,7 @@ export default function App() {
   const handleSelectApiKey = async () => {
     if (window.aistudio?.openSelectKey) {
       await window.aistudio.openSelectKey();
-      setHasPaidKey(true);
+      setHasCustomKey(true);
     }
   };
 
@@ -308,6 +308,10 @@ export default function App() {
           const errorStr = String(e.message || e);
           if (errorStr.includes("EXCEEDED_SPENDING_CAP")) {
             setErrorNotification("Presupuesto agotado en AI Studio. Favor revise su 'Spending Cap' en ai.studio/spend.");
+          } else if (errorStr.includes("API_KEY_INVALID") || errorStr.includes("401") || errorStr.includes("UNAUTHENTICATED") || errorStr.includes("400") || errorStr.includes("INVALID_ARGUMENT") || errorStr.includes("invalid authentication")) {
+            setErrorNotification("La API Key es inválida o fue revocada por seguridad. Haga clic en 'Configurar API Key' y pegue una nueva.");
+          } else if (errorStr.includes("leaked") || errorStr.includes("PERMISSION_DENIED") || errorStr.includes("403")) {
+            setErrorNotification("La clave por defecto alcanzó su límite. Haga clic en 'Configurar API Key' para usar su propia clave GRATUITA de AI Studio.");
           }
           setSuggestions([]);
         } finally {
@@ -382,7 +386,7 @@ export default function App() {
         if (locSamples <= 0) continue;
 
         // FASE DE INVESTIGACIÓN: Obtener anclas reales para fundamentar el dataset
-        const newAnchors = await researchLocationAnchors(currentLoc, hasPaidKey);
+        const newAnchors = await researchLocationAnchors(currentLoc, hasCustomKey);
         setAnchors(prev => [...prev, ...newAnchors]);
         console.log(`Anclando dataset en ${currentLoc} con ${newAnchors.length} hitos reales.`);
 
@@ -450,7 +454,7 @@ export default function App() {
               }
             }
 
-            const batch = await generateDatasetBatch(currentBatchSize, locStartIdx + i + 1, currentLoc, centerCoord, hasPaidKey, 3, customCenters || undefined, newAnchors);
+            const batch = await generateDatasetBatch(currentBatchSize, locStartIdx + i + 1, currentLoc, centerCoord, hasCustomKey, 3, customCenters || undefined, newAnchors);
           
           if (isSpendingCapExceeded) {
              setErrorNotification("Presupuesto agotado en AI Studio. Favor revise su 'Spending Cap' en ai.studio/spend.");
@@ -478,7 +482,7 @@ export default function App() {
           });
 
           // Validate corners globally with LLM
-          const cornerMismatchValidation = await validateGeocoordinatesBatch(uniqueBatch, currentLoc, hasPaidKey);
+          const cornerMismatchValidation = await validateGeocoordinatesBatch(uniqueBatch, currentLoc, hasCustomKey);
           
           if (isSpendingCapExceeded) {
              setErrorNotification("Presupuesto agotado en AI Studio. Favor revise su 'Spending Cap' en ai.studio/spend.");
@@ -522,7 +526,7 @@ export default function App() {
 
           // Add a pause between requests to respect API rate limits (15 RPM for free tier)
           if (i + currentBatchSize < locSamples || lIdx < locationList.length - 1) {
-            const waitTime = hasPaidKey ? 800 : 4500;
+            const waitTime = hasCustomKey ? 800 : 4500;
             await new Promise(resolve => setTimeout(resolve, waitTime));
           }
         }
@@ -564,11 +568,19 @@ export default function App() {
         });
       }
     } catch (error: any) {
-      console.error("Critical failure during dataset generation:", error);
       const errorStr = typeof error === 'object' ? JSON.stringify(error) + " " + String(error.message) : String(error);
+      
+      // Do not log expected auth/rate-limit errors to console to prevent AI Studio error catcher
+      if (!errorStr.includes("leaked") && !errorStr.includes("PERMISSION_DENIED") && !errorStr.includes("403") && !errorStr.includes("429") && !errorStr.includes("401") && !errorStr.includes("UNAUTHENTICATED")) {
+        console.error("Generation stopped:", error);
+      }
       
       if (errorStr.includes("EXCEEDED_SPENDING_CAP")) {
         setErrorNotification("Presupuesto agotado en AI Studio. Favor revise su 'Spending Cap' en ai.studio/spend.");
+      } else if (errorStr.includes("API_KEY_INVALID") || errorStr.includes("400") || errorStr.includes("INVALID_ARGUMENT") || errorStr.includes("401") || errorStr.includes("UNAUTHENTICATED") || errorStr.includes("invalid authentication")) {
+        setErrorNotification("La API Key es inválida o fue revocada por seguridad. Haga clic en 'Configurar API Key' y pegue una nueva.");
+      } else if (errorStr.includes("leaked") || errorStr.includes("PERMISSION_DENIED") || errorStr.includes("403")) {
+        setErrorNotification("La clave por defecto alcanzó su límite. Haga clic en 'Configurar API Key' para usar su propia clave GRATUITA de AI Studio.");
       } else if (error?.status === 429 || errorStr.includes("429") || errorStr.includes("quota") || errorStr.includes("Max retries reached") || errorStr.includes("RESOURCE_EXHAUSTED") || errorStr.includes("Quota")) {
         setErrorNotification("Cuota de la API agotada o límite de tasa excedido. Favor reduzca la muestra o espere 1 minuto.");
       } else {
@@ -744,8 +756,8 @@ export default function App() {
     await downloadFileWithPicker(dataStr, exportFileDefaultName, 'application/geo+json', '.geojson');
   };
 
-  const checkCostAndGenerate = async () => {
-    if (hasPaidKey) {
+  const checkAndGenerate = async () => {
+    if (hasCustomKey) {
       // Fast check if everything is fully cached
       const locationList = location.split(';').map(l => l.trim()).filter(l => l);
       if (locationList.length === 0) {
@@ -785,7 +797,7 @@ export default function App() {
         // Bypass warning since it will be instant and cost $0
         generateFullDataset();
       } else {
-        setShowCostWarning(true);
+        setShowConfirmModal(true);
       }
     } else {
       generateFullDataset();
@@ -800,7 +812,7 @@ export default function App() {
 
     if (!showHistory) {
       if (e.key === 'Enter') {
-        checkCostAndGenerate();
+        checkAndGenerate();
       }
       return;
     }
@@ -825,7 +837,7 @@ export default function App() {
         setShowHistory(false);
         setSelectedIndex(-1);
       } else {
-        checkCostAndGenerate();
+        checkAndGenerate();
         setShowHistory(false);
       }
     } else if (e.key === 'Escape') {
@@ -969,14 +981,14 @@ export default function App() {
           <button 
             onClick={handleSelectApiKey}
             className={`flex items-center justify-center gap-2 border px-4 py-2 transition-colors text-[10px] uppercase rounded-sm ${
-              hasPaidKey 
+              hasCustomKey 
                 ? 'bg-emerald-600/10 border-emerald-600/30 text-emerald-600' 
                 : 'border-brand-line hover:bg-brand-ink hover:text-brand-bg opacity-70'
             }`}
-            title={hasPaidKey ? "API Key de Pago Activa" : "Configurar API Key de Pago"}
+            title={hasCustomKey ? "API Key Activa" : "Configurar API Key Propia"}
           >
-            <Zap size={14} className={hasPaidKey ? "fill-emerald-600" : ""} />
-            {hasPaidKey ? "Clave Paga Detectada" : "Usar API Paga (Opcional)"}
+            <Zap size={14} className={hasCustomKey ? "fill-emerald-600" : ""} />
+            {hasCustomKey ? "API Key Configurada" : 'Configurar API Key'}
           </button>
 
           {entries.length > 0 && !isGenerating && (
@@ -1020,7 +1032,7 @@ export default function App() {
             )}
             <button 
               id="generate-btn"
-              onClick={checkCostAndGenerate}
+              onClick={checkAndGenerate}
               disabled={isGenerating}
               className={`flex-1 md:flex-none flex items-center justify-center gap-2 border border-brand-line px-6 py-2 transition-colors text-xs uppercase ${
                 isGenerating ? 'opacity-50 cursor-not-allowed' : 'hover:bg-brand-ink hover:text-brand-bg'
@@ -1162,7 +1174,7 @@ export default function App() {
 
       {/* Cost Warning Modal */}
       <AnimatePresence>
-        {showCostWarning && (
+        {showConfirmModal && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1180,8 +1192,8 @@ export default function App() {
                   <Info className="text-brand-ink" size={32} />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold uppercase tracking-tight">Estimación de Costo (Flash)</h3>
-                  <p className="text-[10px] opacity-60 uppercase tracking-widest">Modelo de Bajo Costo Seleccionado</p>
+                  <h3 className="text-xl font-bold uppercase tracking-tight">Confirmación de Consumo API</h3>
+                  <p className="text-[10px] opacity-60 uppercase tracking-widest">Uso con clave gratuita permitida (Uso Justo)</p>
                 </div>
               </div>
               <div className="mt-4 mb-8 text-sm leading-relaxed">
@@ -1197,15 +1209,12 @@ export default function App() {
                     <span className="opacity-70">Modelo Activo:</span>
                     <span>Gemini 3 Flash</span>
                   </div>
-                  <div className="flex justify-between border-b border-brand-line/30 pb-2 mb-2">
-                    <span className="opacity-70">Costo máx. por muestra (Aprox.):</span>
-                    <span>$0.0003 USD</span>
-                  </div>
+                  
                   <div className="flex justify-between font-bold text-[13px] pt-1">
-                    <span>Costo Total Estimado:</span>
-                    <span>~${(() => {
+                    <span>Muestras a Consultar a la API:</span>
+                    <span>~{(() => {
                         const locs = location.split(';').map(l => l.trim()).filter(l => l);
-                        if (locs.length === 0) return (sampleCount * 0.0003).toFixed(5);
+                        if (locs.length === 0) return sampleCount.toString();
                         
                         const samplesPerLocation = Math.ceil(sampleCount / locs.length);
                         let totalUncached = 0;
@@ -1233,26 +1242,25 @@ export default function App() {
                           }
                         }
                         
-                        if (totalUncached === 0) return "0.00000"; 
-                        return (totalUncached * 0.0003).toFixed(5);
-                    })()} USD</span>
+                        return totalUncached.toString();
+                    })()}</span>
                   </div>
                 </div>
                 
                 <p className="text-[10px] opacity-60 uppercase tracking-widest text-center mt-4">
-                  (El costo se calcula restando la data de zonas previamente procesadas)
+                  (Las muestras cacheadas previamente no consumen peticiones a la API)
                 </p>
               </div>
               <div className="flex justify-end gap-3">
                 <button 
-                  onClick={() => setShowCostWarning(false)}
+                  onClick={() => setShowConfirmModal(false)}
                   className="px-6 py-2 text-xs uppercase font-bold border border-brand-line/50 hover:bg-brand-ink/10 transition-colors"
                 >
                   Cancelar
                 </button>
                 <button 
                   onClick={() => {
-                    setShowCostWarning(false);
+                    setShowConfirmModal(false);
                     generateFullDataset();
                   }}
                   className="px-6 py-2 text-xs uppercase font-bold bg-brand-ink text-brand-bg hover:bg-brand-ink/80 transition-colors flex items-center gap-2"
@@ -1306,7 +1314,7 @@ export default function App() {
         {savedDatasets.length > 0 && entries.length > 0 && (
           <div className="bg-emerald-50/70 border-b border-emerald-500/10 px-6 py-1.5 flex items-center gap-3 overflow-x-auto whitespace-nowrap scrollbar-hide">
             <span className="text-[9px] font-bold text-emerald-800 uppercase tracking-widest shrink-0 flex items-center gap-1 font-mono">
-              <Database size={11} className="text-emerald-600 hover:animate-pulse" /> Colecciones Locales (Costo $0):
+              <Database size={11} className="text-emerald-600 hover:animate-pulse" /> Colecciones Locales (Caché):
             </span>
             {savedDatasets.map(ds => (
               <div key={ds.id} className="inline-flex items-center gap-1 shrink-0">

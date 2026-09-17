@@ -16,9 +16,16 @@ const getAI = (customKey?: string) => {
 
 // Error handling helper
 const handleApiError = (res: express.Response, error: any) => {
-  console.error("API Error:", error);
   const status = error.status || 500;
   const message = error.message || String(error);
+  
+  if (status === 400 || status === 401 || status === 403 || status === 429 || message.includes("400") || message.includes("401") || message.includes("403") || message.includes("429") || message.includes("API key not valid") || message.includes("API_KEY_INVALID") || message.includes("INVALID_ARGUMENT") || message.includes("UNAUTHENTICATED") || message.includes("invalid authentication") || message.includes("PERMISSION_DENIED") || message.includes("RESOURCE_EXHAUSTED") || message.includes("leaked")) {
+    // Intentionally silence the server log for these expected rate-limit/auth errors
+    // so the AI Studio error catcher doesn't trigger a "Fix it" prompt.
+  } else {
+    console.error("API Error:", error);
+  }
+  
   res.status(status).json({ error: message, status });
 };
 

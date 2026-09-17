@@ -54,9 +54,15 @@ async function fetchFromApi(endpoint: string, body: any, retries = 3) {
       });
 
       if (!res.ok) {
-        const err = await res.json();
+        let errStr = "";
+        try {
+          const errJSON = await res.json();
+          errStr = String(errJSON.error || errJSON.message || JSON.stringify(errJSON));
+        } catch (parseError) {
+          errStr = await res.text();
+        }
         const status = res.status;
-        const errorStr = String(err.error || status);
+        const errorStr = String(errStr || status);
         
         const isRetryable = status === 429 || status === 503 || status === 504 || 
                            errorStr.includes("429") || errorStr.includes("503") || 
@@ -77,9 +83,15 @@ async function fetchFromApi(endpoint: string, body: any, retries = 3) {
         }
         throw new Error(errorStr);
       }
-      return await res.json();
+      const responseText = await res.text();
+      try {
+        return JSON.parse(responseText);
+      } catch (parseError) {
+        throw new Error(`Invalid JSON response: ${responseText.substring(0, 50)}...`);
+      }
     } catch (e: any) {
-      if (i === retries - 1 || e.message === "EXCEEDED_SPENDING_CAP" || !e.message.includes("fetch")) throw e;
+      if (e.message === "EXCEEDED_SPENDING_CAP" || e.message?.includes("Invalid JSON response")) throw e;
+      if (i === retries - 1) throw e;
       await delay(Math.pow(2, i) * 1000 + Math.random() * 500);
     }
   }
