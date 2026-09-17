@@ -39,6 +39,7 @@ import {
 , Folder, Save, HardDrive
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 import { generateDatasetBatch, geocodeLocation, parseLocations, validateGeocoordinatesBatch, DatasetEntry, getGeographySuggestions, isSpendingCapExceeded, researchLocationAnchors, LocationAnchor } from './services/geminiService';
 import MapComponent from './components/MapComponent';
 import StatisticsView from './components/StatisticsView';
@@ -386,6 +387,7 @@ export default function App() {
         if (locSamples <= 0) continue;
 
         // FASE DE INVESTIGACIÓN: Obtener anclas reales para fundamentar el dataset
+        await delay(2000); // 2 second pause to avoid rate limits
         const newAnchors = await researchLocationAnchors(currentLoc, hasCustomKey);
         setAnchors(prev => [...prev, ...newAnchors]);
         console.log(`Anclando dataset en ${currentLoc} con ${newAnchors.length} hitos reales.`);
@@ -417,6 +419,7 @@ export default function App() {
         }
 
         // Geocode central coordinate first
+        await delay(2000); // 2 second pause
         const centerCoord = await geocodeLocation(currentLoc);
         if (isSpendingCapExceeded) {
           setErrorNotification("Presupuesto agotado en AI Studio. Favor revise su 'Spending Cap' en ai.studio/spend.");
@@ -424,7 +427,7 @@ export default function App() {
           return;
         }
 
-        const batchSize = 30;
+        const batchSize = 5; // Aún más reducido para evitar cortes de JSON por token limit
         let locItemsToCache: DatasetEntry[] = [];
 
           for (let i = 0; i < locSamples; i += batchSize) {
@@ -454,7 +457,8 @@ export default function App() {
               }
             }
 
-            const batch = await generateDatasetBatch(currentBatchSize, locStartIdx + i + 1, currentLoc, centerCoord, hasCustomKey, 3, customCenters || undefined, newAnchors);
+            await delay(3000); // 3 second pause before generation
+            const batch = await generateDatasetBatch(currentBatchSize, locStartIdx + i + 1, currentLoc, centerCoord, hasCustomKey, 5, customCenters || undefined, newAnchors);
           
           if (isSpendingCapExceeded) {
              setErrorNotification("Presupuesto agotado en AI Studio. Favor revise su 'Spending Cap' en ai.studio/spend.");
@@ -462,7 +466,7 @@ export default function App() {
              return;
           }
 
-          let uniqueBatch = batch.map((item, idx) => {
+          let uniqueBatch = batch.filter(item => item?.coordinates?.lat !== undefined && item?.coordinates?.lng !== undefined).map((item, idx) => {
             let validation: DatasetEntry['validation'] = undefined;
             if (centerCoord && item.coordinates) {
               const dist = getDistanceInMeters(centerCoord.lat, centerCoord.lng, item.coordinates.lat, item.coordinates.lng);
@@ -571,18 +575,22 @@ export default function App() {
       const errorStr = typeof error === 'object' ? JSON.stringify(error) + " " + String(error.message) : String(error);
       
       // Do not log expected auth/rate-limit errors to console to prevent AI Studio error catcher
-      if (!errorStr.includes("leaked") && !errorStr.includes("PERMISSION_DENIED") && !errorStr.includes("403") && !errorStr.includes("429") && !errorStr.includes("401") && !errorStr.includes("UNAUTHENTICATED")) {
+      if (!errorStr.includes("leaked") && !errorStr.includes("PERMISSION_DENIED") && !errorStr.includes("403") && !errorStr.includes("429") && !errorStr.includes("401") && !errorStr.includes("UNAUTHENTICATED") && !errorStr.includes("503") && !errorStr.includes("UNAVAILABLE") && !errorStr.includes("fetch failed") && !errorStr.includes("Timeout") && !errorStr.includes("AUTH_EXPIRED")) {
         console.error("Generation stopped:", error);
       }
       
-      if (errorStr.includes("EXCEEDED_SPENDING_CAP")) {
+      if (errorStr.includes("AUTH_EXPIRED")) {
+        setErrorNotification("La sesión de la plataforma caducó. Por favor, refresca la página completa del navegador (F5 o Ctrl+R).");
+      } else if (errorStr.includes("EXCEEDED_SPENDING_CAP")) {
         setErrorNotification("Presupuesto agotado en AI Studio. Favor revise su 'Spending Cap' en ai.studio/spend.");
       } else if (errorStr.includes("API_KEY_INVALID") || errorStr.includes("400") || errorStr.includes("INVALID_ARGUMENT") || errorStr.includes("401") || errorStr.includes("UNAUTHENTICATED") || errorStr.includes("invalid authentication")) {
         setErrorNotification("La API Key es inválida o fue revocada por seguridad. Haga clic en 'Configurar API Key' y pegue una nueva.");
       } else if (errorStr.includes("leaked") || errorStr.includes("PERMISSION_DENIED") || errorStr.includes("403")) {
         setErrorNotification("La clave por defecto alcanzó su límite. Haga clic en 'Configurar API Key' para usar su propia clave GRATUITA de AI Studio.");
       } else if (error?.status === 429 || errorStr.includes("429") || errorStr.includes("quota") || errorStr.includes("Max retries reached") || errorStr.includes("RESOURCE_EXHAUSTED") || errorStr.includes("Quota")) {
-        setErrorNotification("Cuota de la API agotada o límite de tasa excedido. Favor reduzca la muestra o espere 1 minuto.");
+        setErrorNotification("Cuota de la API agotada (429). Google dice: " + (errorStr.substring(0, 100)) + ". Espere 1 min.");
+      } else if (errorStr.includes("503") || errorStr.includes("UNAVAILABLE") || errorStr.includes("fetch failed") || errorStr.includes("Timeout") || errorStr.includes("overloaded")) {
+        setErrorNotification("Los servidores de Google Gemini están temporalmente saturados. Por favor, espera unos minutos e intenta de nuevo.");
       } else {
         setErrorNotification("Error en la generación. Revise conexión o API Key.");
       }
@@ -897,7 +905,7 @@ export default function App() {
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
-                        className="absolute top-full left-0 w-full bg-brand-bg border border-brand-line z-50 shadow-2xl mt-1 overflow-hidden"
+                        className="absolute top-full left-0 w-full bg-brand-bg border border-brand-line z-[2000] shadow-2xl mt-1 overflow-hidden"
                       >
                         {/* History Section */}
                         {visibleHistory.length > 0 && (
@@ -1072,9 +1080,11 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-brand-ink/90 z-50 flex items-center justify-center p-4 md:p-6 backdrop-blur-sm"
+            className="fixed inset-0 bg-brand-ink/90 z-[2000] flex items-center justify-center p-4 md:p-6 backdrop-blur-sm"
+            onClick={() => setSelectedEntry(null)}
           >
-            <motion.div 
+            <motion.div
+              onClick={(e) => e.stopPropagation()} 
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 20 }}
@@ -1179,7 +1189,7 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-brand-ink/90 z-50 flex items-center justify-center p-4 md:p-6 backdrop-blur-sm"
+            className="fixed inset-0 bg-brand-ink/90 z-[2000] flex items-center justify-center p-4 md:p-6 backdrop-blur-sm"
           >
             <motion.div 
               initial={{ scale: 0.95, y: 20 }}
@@ -1207,7 +1217,7 @@ export default function App() {
                 <div className="bg-brand-ink/5 p-4 border border-brand-line/30 font-mono text-xs">
                   <div className="flex justify-between border-b border-brand-line/30 pb-2 mb-2">
                     <span className="opacity-70">Modelo Activo:</span>
-                    <span>Gemini 3 Flash</span>
+                    <span>Gemini 3.6 Flash</span>
                   </div>
                   
                   <div className="flex justify-between font-bold text-[13px] pt-1">
@@ -1450,7 +1460,7 @@ export default function App() {
           <>
             {viewMode === 'analysis' && entries.length > 0 && (
               <>
-                <div className="h-[400px] w-full border-b border-brand-line shrink-0">
+                <div className="h-[400px] w-full border-b border-brand-line shrink-0 relative z-0 isolate overflow-hidden">
                   <MapComponent 
                     entries={filteredEntries} 
                     selectedEntry={selectedEntry} 
@@ -1651,15 +1661,15 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-brand-ink/90 z-50 flex items-center justify-center p-4 md:p-6 backdrop-blur-sm"
+            className="fixed inset-0 bg-brand-ink/90 z-[2000] flex items-center justify-center p-4 md:p-6 backdrop-blur-sm"
           >
             <motion.div 
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 20 }}
-              className="bg-brand-bg w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col border border-brand-line"
+              className="bg-brand-bg w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col border border-brand-line relative"
             >
-              <div className="p-6 border-b border-brand-line flex justify-between items-center bg-brand-bg">
+              <div className="p-6 border-b border-brand-line flex justify-between items-center bg-brand-bg relative z-20">
                 <div className="flex items-center gap-6">
                   <span className="text-4xl font-serif italic font-bold">#{selectedEntry.id}</span>
                   <div>
@@ -1681,10 +1691,10 @@ export default function App() {
                     </div>
                   )}
                   <button 
-                    onClick={() => setSelectedEntry(null)}
-                    className="p-2 border border-brand-line hover:bg-brand-ink hover:text-brand-bg transition-colors"
+                    onClick={(e) => { e.stopPropagation(); setSelectedEntry(null); }}
+                    className="p-2 border border-brand-line hover:bg-brand-ink hover:text-brand-bg transition-colors relative z-50 cursor-pointer"
                   >
-                    <X size={20} />
+                    <X size={20} pointerEvents="none" />
                   </button>
                 </div>
               </div>
@@ -1778,7 +1788,7 @@ export default function App() {
                       <LayoutGrid size={14} />
                       Contexto Geográfico (Radio 150m)
                     </div>
-                    <div className="w-full h-48 border border-brand-line bg-brand-ink/5">
+                    <div className="w-full h-48 border border-brand-line bg-brand-ink/5 relative z-0 isolate overflow-hidden">
                       <MapComponent 
                         entries={[selectedEntry]} 
                         selectedEntry={selectedEntry} 

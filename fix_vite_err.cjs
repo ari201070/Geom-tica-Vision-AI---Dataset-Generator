@@ -1,4 +1,7 @@
+const fs = require('fs');
+let code = fs.readFileSync('src/main.tsx', 'utf8');
 
+const prefix = `
 // Suppress Vite websocket errors that trigger the platform's red overlay
 const originalConsoleError = console.error;
 console.error = (...args) => {
@@ -14,13 +17,11 @@ window.addEventListener('unhandledrejection', (event) => {
     event.preventDefault();
   }
 });
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
-import App from './App.tsx';
-import './index.css';
+`;
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+if (!code.includes('originalConsoleError')) {
+  fs.writeFileSync('src/main.tsx', prefix + code);
+  console.log('main.tsx updated');
+} else {
+  console.log('main.tsx already has error suppression');
+}

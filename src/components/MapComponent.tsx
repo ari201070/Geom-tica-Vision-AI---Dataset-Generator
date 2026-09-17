@@ -1,3 +1,4 @@
+import 'leaflet/dist/leaflet.css';
 import { MapContainer, TileLayer, CircleMarker, Marker, Popup, Tooltip, Polygon, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { DatasetEntry, LocationAnchor } from '../services/geminiService';
@@ -91,9 +92,9 @@ export default function MapComponent({
 }: MapComponentProps) {
   const center: [number, number] = forcedCenter
     ? forcedCenter
-    : selectedEntry 
+    : (selectedEntry?.coordinates?.lat !== undefined && selectedEntry?.coordinates?.lng !== undefined)
     ? [selectedEntry.coordinates.lat, selectedEntry.coordinates.lng] 
-    : entries.length > 0 
+    : (entries.length > 0 && entries[0]?.coordinates?.lat !== undefined && entries[0]?.coordinates?.lng !== undefined)
       ? [entries[0].coordinates.lat, entries[0].coordinates.lng] 
       : [-34.6622, -58.3653]; // Default Avellaneda
 
@@ -120,7 +121,7 @@ export default function MapComponent({
   }), [geofence]);
 
   return (
-    <div className={`h-full w-full grayscale contrast-[1.2] transition-all ${isDrawingMode ? 'cursor-crosshair ring-4 ring-brand-line ring-inset' : ''}`}>
+    <div className={`h-full w-full overflow-hidden grayscale contrast-[1.2] transition-all ${isDrawingMode ? 'cursor-crosshair ring-4 ring-brand-line ring-inset' : ''}`}>
       <MapContainer 
         center={center} 
         zoom={targetZoom} 
@@ -135,7 +136,7 @@ export default function MapComponent({
         
         <MapEvents isDrawingMode={isDrawingMode} geofence={geofence} onUpdateGeofence={onUpdateGeofence} />
         
-        {selectedEntry && <ChangeView center={[selectedEntry.coordinates.lat, selectedEntry.coordinates.lng]} zoom={targetZoom} />}
+        {(selectedEntry?.coordinates?.lat !== undefined && selectedEntry?.coordinates?.lng !== undefined) && <ChangeView center={[selectedEntry.coordinates.lat, selectedEntry.coordinates.lng]} zoom={targetZoom} />}
 
         {/* Geofence Layer */}
         {geofencePolygons.map(poly => (
@@ -180,7 +181,9 @@ export default function MapComponent({
           );
         })}
 
-        {anchors.map((anchor, idx) => (
+        {anchors.map((anchor, idx) => {
+          if (anchor?.lat === undefined || anchor?.lng === undefined) return null;
+          return (
           <Marker 
             key={`anchor-${idx}-${anchor.name}`}
             position={[anchor.lat, anchor.lng]}
@@ -200,10 +203,10 @@ export default function MapComponent({
                 </div>
               </div>
             </Popup>
-          </Marker>
-        ))}
+          </Marker>); })}
 
         {entries.map(entry => {
+          if (entry?.coordinates?.lat === undefined || entry?.coordinates?.lng === undefined) return null;
           const isSelected = selectedEntry?.id === entry.id;
           return (
             <CircleMarker 

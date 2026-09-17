@@ -19,7 +19,7 @@ const handleApiError = (res: express.Response, error: any) => {
   const status = error.status || 500;
   const message = error.message || String(error);
   
-  if (status === 400 || status === 401 || status === 403 || status === 429 || message.includes("400") || message.includes("401") || message.includes("403") || message.includes("429") || message.includes("API key not valid") || message.includes("API_KEY_INVALID") || message.includes("INVALID_ARGUMENT") || message.includes("UNAUTHENTICATED") || message.includes("invalid authentication") || message.includes("PERMISSION_DENIED") || message.includes("RESOURCE_EXHAUSTED") || message.includes("leaked")) {
+  if (status === 400 || status === 401 || status === 403 || status === 429 || status === 503 || message.includes("400") || message.includes("401") || message.includes("403") || message.includes("429") || message.includes("503") || message.includes("API key not valid") || message.includes("API_KEY_INVALID") || message.includes("INVALID_ARGUMENT") || message.includes("UNAUTHENTICATED") || message.includes("invalid authentication") || message.includes("PERMISSION_DENIED") || message.includes("RESOURCE_EXHAUSTED") || message.includes("leaked") || message.includes("UNAVAILABLE") || message.includes("fetch failed") || message.includes("Timeout") || message.includes("SyntaxError") || message.includes("JSON")) {
     // Intentionally silence the server log for these expected rate-limit/auth errors
     // so the AI Studio error catcher doesn't trigger a "Fix it" prompt.
   } else {
@@ -41,7 +41,7 @@ app.post("/api/suggestions", async (req, res) => {
   Devuelve SOLO un array de strings en formato JSON.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.6-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -79,7 +79,7 @@ app.post("/api/geocode", async (req, res) => {
         Devuelve SOLO un JSON con "lat" y "lng". NO agregues markdown ni explicaciones.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.6-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -104,12 +104,17 @@ app.post("/api/anchors", async (req, res) => {
     if (!ai) return res.status(500).json({ error: "No API Key" });
 
     const prompt = `Actúa como un experto en SIG (Sistemas de Información Geográfica). 
-  Para la ubicación: "${location}", identifica 5-8 puntos de interés REALES (monumentos, plazas, intersecciones famosas, edificios públicos).
+  El usuario ha solicitado la siguiente ubicación o conjunto de lugares: "${location}".
+  
+  INSTRUCCIÓN CRÍTICA: 
+  - Si el usuario enumera lugares específicos (ej. "Solo Coliseo y Palatino", "Colosseum and Palatine Hill"), DEBES devolver ÚNICAMENTE esos lugares solicitados. No agregues otros puntos de interés cercanos (como el Foro Romano).
+  - Si el usuario da una ubicación general (ej. "Roma", "Madrid"), identifica 5-8 puntos de interés REALES y variados dentro de esa área.
+  
   Devuelve un array JSON de objetos con: { "name": string, "lat": number, "lng": number, "type": string }.
-  Asegúrate de que las coordenadas sean lo más precisas posible según tu base de datos de conocimiento (OpenStreetMap/Wiki).`;
+  Asegúrate de que las coordenadas sean de ALTA PRECISIÓN (error < 15 metros) según tu base de datos de conocimiento.`;
 
     const response = await ai.models.generateContent({
-      model: usePro ? "gemini-3.1-pro-preview" : "gemini-3-flash-preview",
+      model: usePro ? "gemini-3.1-pro-preview" : "gemini-3.6-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -148,7 +153,7 @@ app.post("/api/validate", async (req, res) => {
   ${JSON.stringify(batch, null, 2)}`;
 
     const response = await ai.models.generateContent({
-      model: (usePro && batch.length <= 5) ? "gemini-3.1-pro-preview" : "gemini-3-flash-preview",
+      model: (usePro && batch.length <= 5) ? "gemini-3.1-pro-preview" : "gemini-3.6-flash",
       contents: prompt,
       config: {
         temperature: 0.1,
@@ -268,7 +273,7 @@ app.post("/api/generate", async (req, res) => {
     };
 
     const response = await ai.models.generateContent({
-      model: (usePro && count <= 10) ? "gemini-3.1-pro-preview" : "gemini-3-flash-preview",
+      model: (usePro && count <= 10) ? "gemini-3.1-pro-preview" : "gemini-3.6-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -294,7 +299,7 @@ app.post("/api/parse", async (req, res) => {
   Devuelve SOLO un array JSON válido de strings.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.6-flash",
       contents: prompt,
       config: {
         temperature: 0.1,

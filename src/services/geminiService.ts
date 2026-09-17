@@ -44,7 +44,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const geocodeCache: Record<string, {lat: number, lng: number}> = {};
 
-async function fetchFromApi(endpoint: string, body: any, retries = 3) {
+async function fetchFromApi(endpoint: string, body: any, retries = 4) {
   for (let i = 0; i < retries; i++) {
     try {
       const res = await fetch(endpoint, {
@@ -53,20 +53,20 @@ async function fetchFromApi(endpoint: string, body: any, retries = 3) {
         body: JSON.stringify({ ...body, customKey: userProvidedApiKey })
       });
 
+      const responseText = await res.text();
       if (!res.ok) {
-        let errStr = "";
+        let errStr = responseText;
         try {
-          const errJSON = await res.json();
+          const errJSON = JSON.parse(responseText);
           errStr = String(errJSON.error || errJSON.message || JSON.stringify(errJSON));
-        } catch (parseError) {
-          errStr = await res.text();
-        }
+        } catch (parseError) {}
+        
         const status = res.status;
         const errorStr = String(errStr || status);
         
         const isRetryable = status === 429 || status === 503 || status === 504 || 
                            errorStr.includes("429") || errorStr.includes("503") || 
-                           errorStr.includes("RESOURCE_EXHAUSTED") || errorStr.includes("Deadline");
+                           errorStr.includes("RESOURCE_EXHAUSTED") || errorStr.includes("Deadline") || errorStr.includes("SyntaxError") || errorStr.includes("JSON");
                            
         if (isRetryable) {
           if (errorStr.includes("spending cap")) {
@@ -74,31 +74,31 @@ async function fetchFromApi(endpoint: string, body: any, retries = 3) {
             throw new Error("EXCEEDED_SPENDING_CAP");
           }
           if (i < retries - 1) {
-            await delay(Math.pow(2, i) * 1000 + Math.random() * 500);
+            await delay(status === 429 || errorStr.includes("429") || errorStr.includes("quota") ? (i + 1) * 7000 + Math.random() * 1000 : Math.pow(2, i) * 1000 + Math.random() * 500);
             continue;
           }
-        } else {
-          // If not retryable, throw immediately so we don't delay and retry 3 times
-          throw new Error(errorStr);
         }
         throw new Error(errorStr);
       }
-      const responseText = await res.text();
+      
       try {
         return JSON.parse(responseText);
       } catch (parseError) {
+        if (responseText.toLowerCase().includes("<!doctype html>")) {
+          throw new Error("AUTH_EXPIRED");
+        }
         throw new Error(`Invalid JSON response: ${responseText.substring(0, 50)}...`);
       }
     } catch (e: any) {
-      if (e.message === "EXCEEDED_SPENDING_CAP" || e.message?.includes("Invalid JSON response")) throw e;
+      if (e.message === "EXCEEDED_SPENDING_CAP" || e.message === "AUTH_EXPIRED" || e.message?.includes("Invalid JSON response")) throw e;
       if (i === retries - 1) throw e;
-      await delay(Math.pow(2, i) * 1000 + Math.random() * 500);
+      await delay(status === 429 || errorStr.includes("429") || errorStr.includes("quota") ? (i + 1) * 7000 + Math.random() * 1000 : Math.pow(2, i) * 1000 + Math.random() * 500);
     }
   }
   throw new Error("API request failed after retries.");
 }
 
-export async function parseLocations(input: string, retries = 3): Promise<string[]> {
+export async function parseLocations(input: string, retries = 4): Promise<string[]> {
   try {
     return await fetchFromApi("/api/parse", { input }, retries);
   } catch (e) {
@@ -110,7 +110,7 @@ export async function validateGeocoordinatesBatch(
   batch: DatasetEntry[], 
   location: string, 
   usePro = false, 
-  retries = 3
+  retries = 4
 ): Promise<Record<string, {isMismatch: boolean, reason?: string}>> {
   try {
     return await fetchFromApi("/api/validate", { batch, location, usePro }, retries);
@@ -132,7 +132,7 @@ async function fallbackNominatim(location: string) {
   return null;
 }
 
-export async function geocodeLocation(location: string, retries = 3): Promise<{lat: number, lng: number} | null> {
+export async function geocodeLocation(location: string, retries = 4): Promise<{lat: number, lng: number} | null> {
   const trimmed = location.trim().toLowerCase();
   if (geocodeCache[trimmed]) return geocodeCache[trimmed];
 
@@ -171,7 +171,7 @@ export async function generateDatasetBatch(
   }, retries);
 }
 
-export async function getGeographySuggestions(query: string, retries = 3): Promise<string[]> {
+export async function getGeographySuggestions(query: string, retries = 4): Promise<string[]> {
   if (!query || query.length < 3) return [];
   try {
     return await fetchFromApi("/api/suggestions", { query }, retries);
