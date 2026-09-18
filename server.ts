@@ -190,7 +190,15 @@ app.post("/api/generate", async (req, res) => {
     ${customCenters?.length ? `Distribuye las ubicaciones alrededor de estas coordenadas exactas: ${JSON.stringify(customCenters)}. ` : ''}
     ${anchors?.length ? `Utiliza estos puntos clave o anclas (Ground Truth): ${JSON.stringify(anchors)}. ` : ''}
     
-    Genera datos hiperrealistas de micro-fisionomía, OCR (textos visibles), y condiciones de iluminación.`;
+    Genera datos hiperrealistas de micro-fisionomía, OCR (textos visibles), y condiciones de iluminación.
+    REGLA MANDATORIA DE CAMPOS PARA CADA REGISTRO:
+    - name: Nombre completo y preciso del lugar/comercio/monumento (NUNCA dejar vacío ni "Desconocido").
+    - title: Título descriptivo corto del hito.
+    - category: Uno de: "monumento", "hotel", "restaurante", "transporte", "actividad", "naturaleza".
+    - city: Ciudad o municipio correspondiente.
+    - country: País correspondiente.
+    - address: Dirección o referencia de ubicación precisa.
+    - date: Fecha/hora en formato estricto YYYY-MM-DD HH:MM.`;
 
     const RESPONSE_SCHEMA = {
       type: Type.ARRAY,
@@ -198,6 +206,16 @@ app.post("/api/generate", async (req, res) => {
         type: Type.OBJECT,
         properties: {
           id: { type: Type.STRING },
+          name: { type: Type.STRING },
+          title: { type: Type.STRING },
+          category: { 
+            type: Type.STRING,
+            enum: ["monumento", "hotel", "restaurante", "transporte", "actividad", "naturaleza"]
+          },
+          city: { type: Type.STRING },
+          country: { type: Type.STRING },
+          address: { type: Type.STRING },
+          date: { type: Type.STRING },
           coordinates: {
             type: Type.OBJECT,
             properties: {
@@ -265,10 +283,9 @@ app.post("/api/generate", async (req, res) => {
             },
             required: ["fStop", "iso", "shutterSpeed", "focalLength", "make", "model", "lensModel", "dateTimeOriginal"],
           },
-          category: { type: Type.STRING },
           groundedFromAnchor: { type: Type.STRING }
         },
-        required: ["id", "coordinates", "timestamp", "lighting", "microPhysiognomy", "ocr", "exif", "category"],
+        required: ["id", "name", "title", "category", "city", "country", "address", "date", "coordinates", "timestamp", "lighting", "microPhysiognomy", "ocr", "exif"],
       }
     };
 

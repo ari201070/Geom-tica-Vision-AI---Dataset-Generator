@@ -143,8 +143,8 @@ export default function StatisticsView({ entries }: StatisticsViewProps) {
             <span>Distribución de Confianza</span>
             <span className="font-mono font-medium">(Puntajes de Geocodificación)</span>
           </h4>
-          <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[200px] w-full min-w-0">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={180}>
               <BarChart data={scoreData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E4E3E0" />
                 <XAxis dataKey="range" fontSize={10} tick={{fill: '#141414'}} />
@@ -165,8 +165,8 @@ export default function StatisticsView({ entries }: StatisticsViewProps) {
             Categorías de Ubicación
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center h-[200px] overflow-hidden">
-            <div className="h-[180px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-[180px] w-full min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={160}>
                 <PieChart>
                   <Pie
                     data={categoryData}
@@ -211,8 +211,8 @@ export default function StatisticsView({ entries }: StatisticsViewProps) {
           <h4 className="text-[10px] uppercase font-bold tracking-widest mb-4 text-brand-ink/50">
             Predominancia de Estilos Arquitectónicos (Top 5)
           </h4>
-          <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[200px] w-full min-w-0">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={180}>
               <BarChart data={techData} layout="vertical" margin={{ left: 10, right: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E4E3E0" />
                 <XAxis type="number" hide />

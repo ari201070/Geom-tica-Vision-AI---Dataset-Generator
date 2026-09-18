@@ -44,6 +44,7 @@ import { generateDatasetBatch, geocodeLocation, parseLocations, validateGeocoord
 import MapComponent from './components/MapComponent';
 import StatisticsView from './components/StatisticsView';
 import GeoJsonPlayground from './components/GeoJsonPlayground';
+import { generateGeoJson, generateJson, generateCsv } from './utils/exportFormatter';
 import * as h3 from 'h3-js';
 
 // Weights from "Guía de Programación: Ingeniería Inversa Geográfica"
@@ -236,6 +237,20 @@ export default function App() {
       }
     };
     checkApiKey();
+  }, []);
+
+  // Global Escape key listener to close any open modal or window instantly
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedEntry(null);
+        setShowSaveModal(false);
+        setShowConfirmModal(false);
+        setShowHistory(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const handleSelectApiKey = async () => {
@@ -630,29 +645,7 @@ export default function App() {
     return Math.round(score);
   }, []);
 
-  const downloadFileWithPicker = async (contentStr: string, defaultFileName: string, mimeType: string, extension: string) => {
-    try {
-      if ('showSaveFilePicker' in window) {
-        const opts = {
-          suggestedName: defaultFileName,
-          types: [{
-            description: 'Archivo de Datos',
-            accept: { [mimeType]: [extension] },
-          }],
-        };
-        // @ts-ignore
-        const handle = await window.showSaveFilePicker(opts);
-        const writable = await handle.createWritable();
-        await writable.write(contentStr);
-        await writable.close();
-        return;
-      }
-    } catch (err: any) {
-      if (err.name === 'AbortError') return;
-      console.warn('showSaveFilePicker falló, usando método alternativo', err);
-    }
-    
-    // Fallback if API not available or failed
+  const downloadFileDirectly = (contentStr: string, defaultFileName: string, mimeType: string) => {
     const blob = new Blob([contentStr], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const linkElement = document.createElement('a');
@@ -665,14 +658,9 @@ export default function App() {
   };
 
   const exportToJson = async () => {
-    const dataWithAnalysis = entries.map(e => ({
-      ...e,
-      h3Index: h3.latLngToCell(e.coordinates.lat, e.coordinates.lng, 9),
-      geocodingScore: calculateScore(e),
-      isAnchor: calculateScore(e) >= 85
-    }));
-
-    const dataStr = JSON.stringify(dataWithAnalysis, null, 2);
+    if (entries.length === 0) return;
+    const jsonFormatted = generateJson(entries, location);
+    const dataStr = JSON.stringify(jsonFormatted, null, 2);
     
     const slug = location.toLowerCase()
       .replace(/[^a-z0-9]/g, '_')
@@ -680,79 +668,25 @@ export default function App() {
       .slice(0, 30);
     const exportFileDefaultName = `dataset_${slug || 'reverse_geocoding'}.json`;
 
-    await downloadFileWithPicker(dataStr, exportFileDefaultName, 'application/json', '.json');
+    downloadFileDirectly(dataStr, exportFileDefaultName, 'application/json');
   };
 
   const exportToCsv = async () => {
     if (entries.length === 0) return;
-
-    // Helper to flatten nested object
-    const flatten = (obj: any, prefix = ''): Record<string, any> => {
-      let result: Record<string, any> = {};
-      for (const key in obj) {
-        const propName = prefix ? `${prefix}_${key}` : key;
-        if (Array.isArray(obj[key])) {
-          result[propName] = obj[key].join('; ');
-        } else if (typeof obj[key] === 'object' && obj[key] !== null) {
-          Object.assign(result, flatten(obj[key], propName));
-        } else {
-          result[propName] = obj[key];
-        }
-      }
-      return result;
-    };
-
-    const dataWithAnalysis = entries.map(e => ({
-      ...e,
-      h3Index: h3.latLngToCell(e.coordinates.lat, e.coordinates.lng, 9),
-      geocodingScore: calculateScore(e),
-      isAnchor: calculateScore(e) >= 85
-    }));
-
-    const rows = dataWithAnalysis.map(entry => flatten(entry));
-    const headers = Object.keys(rows[0]);
+    const csvContent = generateCsv(entries, location);
     
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => headers.map(header => {
-        const val = row[header];
-        const stringVal = val === undefined || val === null ? '' : String(val);
-        if (stringVal.includes(',') || stringVal.includes('"') || stringVal.includes('\n')) {
-          return `"${stringVal.replace(/"/g, '""')}"`;
-        }
-        return stringVal;
-      }).join(','))
-    ].join('\n');
-
     const slug = location.toLowerCase()
       .replace(/[^a-z0-9]/g, '_')
       .replace(/_{2,}/g, '_')
       .slice(0, 30);
     const exportFileDefaultName = `dataset_${slug || 'reverse_geocoding'}.csv`;
 
-    await downloadFileWithPicker(csvContent, exportFileDefaultName, 'text/csv', '.csv');
+    downloadFileDirectly(csvContent, exportFileDefaultName, 'text/csv;charset=utf-8;');
   };
 
   const exportToGeoJson = async () => {
     if (entries.length === 0) return;
-
-    const geoJson = {
-      type: "FeatureCollection",
-      features: entries.map(entry => ({
-        type: "Feature",
-        geometry: {
-          type: "Point",
-          coordinates: [entry.coordinates.lng, entry.coordinates.lat]
-        },
-        properties: {
-          ...entry,
-          h3Index: h3.latLngToCell(entry.coordinates.lat, entry.coordinates.lng, 9),
-          geocodingScore: calculateScore(entry),
-          isAnchor: calculateScore(entry) >= 85
-        }
-      }))
-    };
-
+    const geoJson = generateGeoJson(entries, location);
     const dataStr = JSON.stringify(geoJson, null, 2);
     
     const slug = location.toLowerCase()
@@ -761,7 +695,7 @@ export default function App() {
       .slice(0, 30);
     const exportFileDefaultName = `dataset_${slug || 'reverse_geocoding'}.geojson`;
 
-    await downloadFileWithPicker(dataStr, exportFileDefaultName, 'application/geo+json', '.geojson');
+    downloadFileDirectly(dataStr, exportFileDefaultName, 'application/geo+json');
   };
 
   const checkAndGenerate = async () => {
@@ -1080,21 +1014,28 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-brand-ink/90 z-[2000] flex items-center justify-center p-4 md:p-6 backdrop-blur-sm"
-            onClick={() => setSelectedEntry(null)}
+            className="fixed inset-0 bg-brand-ink/90 z-[2000] flex items-center justify-center p-4 md:p-6 backdrop-blur-sm cursor-pointer"
+            onClick={() => setShowSaveModal(false)}
           >
             <motion.div
               onClick={(e) => e.stopPropagation()} 
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 20 }}
-              className="bg-brand-bg w-full max-w-lg p-6 border-l-[6px] border-emerald-600 shadow-2xl relative"
+              className="bg-brand-bg w-full max-w-lg p-6 border-l-[6px] border-emerald-600 shadow-2xl relative cursor-default"
             >
               <button 
-                onClick={() => setShowSaveModal(false)}
-                className="absolute top-4 right-4 p-2 hover:bg-brand-ink/10 rounded-full transition-colors"
+                id="btn-close-save-modal"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowSaveModal(false);
+                }}
+                className="absolute top-4 right-4 w-9 h-9 border border-brand-line/30 bg-brand-bg hover:bg-brand-ink hover:text-brand-bg rounded-sm transition-colors flex items-center justify-center cursor-pointer z-50 text-brand-ink"
+                title="Cerrar ventana (Esc)"
+                aria-label="Cerrar ventana"
               >
-                <X size={20} />
+                <X size={20} className="pointer-events-none" />
               </button>
               
               <div className="flex items-center gap-4 mb-6">
@@ -1189,15 +1130,31 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-brand-ink/90 z-[2000] flex items-center justify-center p-4 md:p-6 backdrop-blur-sm"
+            className="fixed inset-0 bg-brand-ink/90 z-[2000] flex items-center justify-center p-4 md:p-6 backdrop-blur-sm cursor-pointer"
+            onClick={() => setShowConfirmModal(false)}
           >
             <motion.div 
+              onClick={(e) => e.stopPropagation()}
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 20 }}
-              className="bg-brand-bg w-full max-w-md p-6 border-l-[6px] border-brand-ink shadow-2xl"
+              className="bg-brand-bg w-full max-w-md p-6 border-l-[6px] border-brand-ink shadow-2xl relative cursor-default"
             >
-              <div className="flex items-center gap-4 mb-4">
+              <button 
+                id="btn-close-confirm-modal"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowConfirmModal(false);
+                }}
+                className="absolute top-4 right-4 w-9 h-9 border border-brand-line/30 bg-brand-bg hover:bg-brand-ink hover:text-brand-bg rounded-sm transition-colors flex items-center justify-center cursor-pointer z-50 text-brand-ink"
+                title="Cerrar ventana (Esc)"
+                aria-label="Cerrar ventana"
+              >
+                <X size={20} className="pointer-events-none" />
+              </button>
+
+              <div className="flex items-center gap-4 mb-4 pr-10">
                 <div className="p-3 bg-brand-ink/5 rounded-full">
                   <Info className="text-brand-ink" size={32} />
                 </div>
@@ -1661,19 +1618,21 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-brand-ink/90 z-[2000] flex items-center justify-center p-4 md:p-6 backdrop-blur-sm"
+            className="fixed inset-0 bg-brand-ink/90 z-[2000] flex items-center justify-center p-4 md:p-6 backdrop-blur-sm cursor-pointer"
+            onClick={() => setSelectedEntry(null)}
           >
             <motion.div 
+              onClick={(e) => e.stopPropagation()}
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 20 }}
-              className="bg-brand-bg w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col border border-brand-line relative"
+              className="bg-brand-bg w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col border border-brand-line relative cursor-default"
             >
               <div className="p-6 border-b border-brand-line flex justify-between items-center bg-brand-bg relative z-20">
                 <div className="flex items-center gap-6">
                   <span className="text-4xl font-serif italic font-bold">#{selectedEntry.id}</span>
                   <div>
-                    <h2 className="text-xl font-bold uppercase">{selectedEntry.coordinates.corner}</h2>
+                    <h2 className="text-xl font-bold uppercase">{selectedEntry.name || selectedEntry.coordinates.corner}</h2>
                     <div className="flex gap-4 mt-1">
                       <p className="text-xs opacity-60">
                         {selectedEntry.coordinates.lat}, {selectedEntry.coordinates.lng}
@@ -1691,10 +1650,17 @@ export default function App() {
                     </div>
                   )}
                   <button 
-                    onClick={(e) => { e.stopPropagation(); setSelectedEntry(null); }}
-                    className="p-2 border border-brand-line hover:bg-brand-ink hover:text-brand-bg transition-colors relative z-50 cursor-pointer"
+                    id="btn-close-detail-modal"
+                    type="button"
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      setSelectedEntry(null); 
+                    }}
+                    className="w-10 h-10 border border-brand-line/40 bg-brand-bg hover:bg-brand-ink hover:text-brand-bg transition-colors flex items-center justify-center relative z-50 cursor-pointer text-brand-ink rounded-sm shadow-xs"
+                    title="Cerrar ventana (Esc)"
+                    aria-label="Cerrar ventana"
                   >
-                    <X size={20} pointerEvents="none" />
+                    <X size={22} className="pointer-events-none" />
                   </button>
                 </div>
               </div>

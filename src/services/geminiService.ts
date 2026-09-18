@@ -5,6 +5,15 @@
 
 export interface DatasetEntry {
   id: string;
+  name?: string;
+  title?: string;
+  category?: 'monumento' | 'hotel' | 'restaurante' | 'transporte' | 'actividad' | 'naturaleza' | 'Parque' | 'Restaurante' | 'Atracción' | 'Comercial' | 'Calle/Intersección' | 'Transporte Público' | 'Otros' | string;
+  latitude?: number;
+  longitude?: number;
+  city?: string;
+  country?: string;
+  address?: string;
+  date?: string;
   coordinates: { lat: number; lng: number; corner: string; };
   validation?: { distanceFromCenter: number; isOutlier: boolean; cornerMismatch?: boolean; suspiciousReason?: string; computedScore?: number; issues?: string[]; h3Index?: string; };
   timestamp: string;
@@ -13,7 +22,6 @@ export interface DatasetEntry {
   ocr: { detectedText: string[]; confidence: number; rapidFuzzScore: number; };
   exif: { fStop: string; iso: number; shutterSpeed: string; focalLength: string; make: string; model: string; lensModel: string; dateTimeOriginal: string; };
   locationContext?: string;
-  category?: 'Parque' | 'Restaurante' | 'Atracción' | 'Comercial' | 'Calle/Intersección' | 'Transporte Público' | 'Otros';
   groundedFromAnchor?: string;
 }
 
@@ -92,7 +100,8 @@ async function fetchFromApi(endpoint: string, body: any, retries = 4) {
     } catch (e: any) {
       if (e.message === "EXCEEDED_SPENDING_CAP" || e.message === "AUTH_EXPIRED" || e.message?.includes("Invalid JSON response")) throw e;
       if (i === retries - 1) throw e;
-      await delay(status === 429 || errorStr.includes("429") || errorStr.includes("quota") ? (i + 1) * 7000 + Math.random() * 1000 : Math.pow(2, i) * 1000 + Math.random() * 500);
+      const isQuota = e?.message?.includes("429") || e?.message?.includes("quota") || e?.message?.includes("RESOURCE_EXHAUSTED");
+      await delay(isQuota ? (i + 1) * 7000 + Math.random() * 1000 : Math.pow(2, i) * 1000 + Math.random() * 500);
     }
   }
   throw new Error("API request failed after retries.");

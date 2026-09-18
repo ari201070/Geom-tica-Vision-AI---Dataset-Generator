@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, CircleMarker } from 'react-leaflet';
 import L from 'leaflet';
 import { DatasetEntry } from '../services/geminiService';
+import { formatEntryForExport } from '../utils/exportFormatter';
 import { 
   Download, 
   Copy, 
@@ -152,17 +153,26 @@ export default function GeoJsonPlayground({ entries, selectedId, onSelectId }: G
         customProps: {}
       };
 
-      // Simplestyle spec & customized attributes
+      const formatted = formatEntryForExport(entry);
+
+      // Simplestyle spec & customized attributes strictly complying with mandatory schema
       return {
         type: 'Feature',
         id: entry.id,
         geometry: {
           type: 'Point',
-          coordinates: [entry.coordinates.lng, entry.coordinates.lat] // GeoJSON specifies [longitude, latitude]
+          coordinates: [formatted.longitude, formatted.latitude] // GeoJSON specifies [longitude, latitude]
         },
         properties: {
-          title: `${entry.id} - ${entry.coordinates.corner}`,
-          category: entry.category || 'Otros',
+          name: formatted.name,
+          title: formatted.title,
+          category: formatted.category,
+          latitude: formatted.latitude,
+          longitude: formatted.longitude,
+          city: formatted.city,
+          country: formatted.country,
+          address: formatted.address,
+          date: formatted.date,
           description: `Score de Validación: ${entry.validation?.computedScore || 0} pts • Estilo: ${entry.microPhysiognomy?.urbanElements?.architectureStyle || 'N/A'}`,
           // Spec-defined geojson parameters for styling (Mapbox/geojson.io simple style)
           'marker-color': styles.markerColor,
@@ -170,8 +180,6 @@ export default function GeoJsonPlayground({ entries, selectedId, onSelectId }: G
           'marker-symbol': styles.markerSymbol,
           // Original metadata properties
           originalId: entry.id,
-          lat: entry.coordinates.lat,
-          lng: entry.coordinates.lng,
           h3Index: entry.validation?.h3Index || 'N/A',
           groundTruth: entry.groundedFromAnchor || 'N/A',
           exifCamera: `${entry.exif?.make || ''} ${entry.exif?.model || ''}`.trim() || 'N/A',
